@@ -1,0 +1,34 @@
+{
+  "name": "mind-os-3",
+  "version": "3.0.0-alpha.2",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "gen:fixtures": "node tests/gen-fixtures.mjs",
+    "compile:lib": "tsc src/lib/chat-archive.ts src/lib/profile-analyzer.ts src/lib/growth-report.ts src/lib/decision-engine.ts --outDir .test-build --module commonjs --moduleResolution node10 --target es2022 --lib es2022,dom --skipLibCheck --esModuleInterop",
+    "test:parser": "npm run gen:fixtures && npm run compile:lib && node tests/run-parser-tests.mjs",
+    "test:analyzer": "npm run compile:lib && node tests/run-analyzer-tests.mjs",
+    "test:growth": "npm run compile:lib && node tests/run-growth-tests.mjs",
+    "test:decision": "npm run compile:lib && node tests/run-decision-tests.mjs",
+    "test": "npm run test:parser && npm run test:analyzer && npm run test:growth && npm run test:decision",
+    "test": "npm run test:parser && npm run test:analyzer"
+  },
+  "dependencies": {
+    "next": "15.3.3",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.3.3",
+    "typescript": "^5.8.3"
+  }
+}

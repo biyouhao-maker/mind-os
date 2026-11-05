@@ -1,0 +1,13 @@
+export type Kind = "fact" | "observation" | "hypothesis";
+export type Insight = {id:string;title:string;detail:string;kind:Kind;evidence:string;confidence:number;createdAt:string;evidenceRefs?:string[]};
+export type Goal = {id:string;title:string;category:string;deadline:string;progress:number;status:"active"|"done"|"paused";notes:string};
+export type GrowthLog = {id:string;date:string;title:string;detail:string};
+export type HealthRecord = {id:string;date:string;type:"meal"|"water"|"sleep"|"exercise"|"weight";value:string;note:string};
+export type Decision = {id:string;date:string;question:string;options:string;pros:string;cons:string;choice:string;reflection:string};
+export type Conversation = {id:string;title:string;platform:string;messageCount:number;importedAt:string;preview:string;sourceImportId?:string;sourceConversationId?:string;createdAt?:string};
+export type Platform = {name:string;status:"not-connected"|"manual"|"connected";note:string};
+export type Snapshot = {id:string;createdAt:string;insights:{title:string;kind:string;confidence:number}[]};
+export type GrowthReportData = {periodLabel:string;windowStart:string;windowEnd:string;conversations:number;messages:number;activeDays:number;topTopics:{name:string;count:number}[];recurringTopics:string[];insightsAdopted:number;insightsConfirmed:number;goals:{total:number;active:number;done:number;avgProgress:number};growthLogs:{count:number;titles:string[]};highlights:string[]};
+export type Report = {id:string;createdAt:string;periodLabel:string;windowStart:string;windowEnd:string;content:GrowthReportData};
+export type AppData = {profile:{name:string;role:string;education:string;bio:string;interests:string[];strengths:string[];skills:string[];thinking:string[]};insights:Insight[];goals:Goal[];growthLogs:GrowthLog[];healthRecords:HealthRecord[];decisions:Decision[];conversations:Conversation[];platforms:Platform[];snapshots:Snapshot[];reports:Report[]};
+export const defaults:AppData={profile:{name:"",role:"",education:"",bio:"",interests:[],strengths:[],skills:[],thinking:[]},insights:[],goals:[],growthLogs:[],healthRecords:[],decisions:[],conversations:[],platforms:["ChatGPT","DeepSeek","智谱清言","Z.ai","ZCode","Claude","Gemini","Cursor / Codex"].map(name=>({name,status:"not-connected",note:"待验证官方导出或本地数据能力"})),snapshots:[],reports:[]};
