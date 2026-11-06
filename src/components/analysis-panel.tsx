@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Conversation, Insight } from "@/lib/types";
+import type { Conversation, Insight, LlmConfig } from "@/lib/types";
 import { listAllMessages } from "@/lib/chat-archive";
-import { analyzeChatHistory, type AnalysisResult, type CandidateInsight } from "@/lib/profile-analyzer";
+import { analyzeChatHistory, analyzeChatHistoryWithLLM, type AnalysisResult, type CandidateInsight } from "@/lib/profile-analyzer";
+import { isLlmReady } from "@/lib/llm";
 
 type Props = {
   conversations: Conversation[];
   insights: Insight[];
+  llm: LlmConfig;
   onAdopt: (items: Insight[]) => void;
 };
 
@@ -41,7 +43,7 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-export default function AnalysisPanel({ conversations, insights, onAdopt }: Props) {
+export default function AnalysisPanel({ conversations, insights, llm, onAdopt }: Props) {
   const router = useRouter();
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
@@ -55,11 +57,28 @@ export default function AnalysisPanel({ conversations, insights, onAdopt }: Prop
     setError("");
     try {
       const messages = await listAllMessages();
-      setResult(analyzeChatHistory(conversations, messages));
+      const analysis = isLlmReady(llm)
+        ? await analyzeChatHistoryWithLLM(conversations, messages, llm)
+        : analyzeChatHistory(conversations, messages);
+      setResult(analysis);
       setDismissed(new Set());
+      if (analysis.llmError) setError(`模型分析未完成，已回退本地规则结果：${analysis.llmError}`);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "分析失败，请重试。");
-      setResult(null);
+      if (isLlmReady(llm)) {
+        try {
+          const ruleMessages = await listAllMessages();
+          const ruleResult = analyzeChatHistory(conversations, ruleMessages);
+          ruleResult.llmError = error instanceof Error ? error.message : "LLM 分析失败。";
+          setResult(ruleResult);
+          setError(`模型分析失败，已回退本地规则结果：${ruleResult.llmError}`);
+        } catch (ruleError) {
+          setError(ruleError instanceof Error ? ruleError.message : "分析失败，请重试。");
+          setResult(null);
+        }
+      } else {
+        setError(error instanceof Error ? error.message : "分析失败，请重试。");
+        setResult(null);
+      }
     } finally {
       setRunning(false);
     }
@@ -110,6 +129,7 @@ export default function AnalysisPanel({ conversations, insights, onAdopt }: Prop
           分析窗口：{result.stats.windowStart ?? "未知"} ~ {result.stats.windowEnd ?? "未知"} ·
           会话 {result.stats.conversationsAnalyzed} 个 · 消息 {result.stats.messagesAnalyzed} 条
           （其中用户消息 {result.stats.userMessagesAnalyzed} 条）
+          {result.generatedBy === "llm" ? ` · 本次候选由模型 ${result.llmModel} 生成（已经校验）` : " · 本次候选由本地规则引擎生成"}
           {processedCount > 0 ? ` · 已采纳或忽略 ${processedCount} 条候选` : ""}
         </p>
       )}

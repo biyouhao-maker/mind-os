@@ -11,9 +11,10 @@
  * - 不构成任何确定预测；最终决策归用户。
  * - 健康数据不参与决策参考。
  */
-import type { Conversation, Goal, Insight } from "./types";
+import type { Conversation, Goal, Insight, LlmConfig } from "./types";
 import type { StoredChatMessage } from "./chat-archive";
 import { TOPIC_RULES } from "./profile-analyzer";
+import { chatCompletion, DECISION_SYSTEM_PROMPT, extractJson } from "./llm";
 
 export type DecisionEvidence = {
   conversationRowId: string;
@@ -34,7 +35,31 @@ export type DecisionAnswer = {
   relatedCount: number;
   /** 相关证据是否足以给出倾向性推荐（<2 条相关会话时为 false） */
   sufficient: boolean;
+  /** 本次回答由谁生成 */
+  generatedBy: "rules" | "llm";
+  model?: string;
 };
+
+export type RelatedItem = { row: Conversation; matched: string[]; snippet: string };
+
+/** 检索与问题相关的历史会话（规则引擎与 LLM 路径共用） */
+export function retrieveRelated(question: string, ctx: { conversations: Conversation[]; messages: StoredChatMessage[] }): RelatedItem[] {
+  const terms = extractTerms(question);
+  const scored: RelatedItem[] = [];
+  for (const row of ctx.conversations) {
+    const userTexts = (ctx.messages ?? [])
+      .filter(message => `${message.importId}:${message.conversationId}` === row.id && message.role === "user")
+      .map(message => message.text);
+    if (!userTexts.length) continue;
+    const blob = userTexts.join("\n");
+    const matched = scoreConversation(blob, terms);
+    if (!matched.length) continue;
+    const firstMatch = userTexts.find(text => scoreConversation(text, terms).length) ?? userTexts[0];
+    scored.push({ row, matched, snippet: firstMatch.slice(0, 80) });
+  }
+  scored.sort((a, b) => b.matched.length - a.matched.length);
+  return scored.slice(0, MAX_EVIDENCE);
+}
 
 const MIN_RELATED_FOR_RECOMMENDATION = 2;
 const MAX_EVIDENCE = 4;
@@ -87,29 +112,10 @@ export function answerDecision(
   if (!trimmed) throw new Error("请先输入你的问题。");
   if (!ctx.conversations.length) throw new Error("还没有已导入的对话，决策参考需要历史数据支撑。请先导入 ChatGPT ZIP。");
 
-  const terms = extractTerms(trimmed);
   const options = extractOptions(trimmed);
-
-  // 检索：按会话打分（用户消息命中的词项数）
-  const scored: Array<{ row: Conversation; matched: string[]; snippet: string }> = [];
-  for (const row of ctx.conversations) {
-    const userTexts = (ctx.messages ?? [])
-      .filter(message => `${message.importId}:${message.conversationId}` === row.id && message.role === "user")
-      .map(message => message.text);
-    if (!userTexts.length) continue;
-    const blob = userTexts.join("\n");
-    const matched = scoreConversation(blob, terms);
-    if (!matched.length) continue;
-    const firstMatch = userTexts.find(text => scoreConversation(text, terms).length) ?? userTexts[0];
-    scored.push({
-      row,
-      matched,
-      snippet: firstMatch.slice(0, 80)
-    });
-  }
-  scored.sort((a, b) => b.matched.length - a.matched.length);
-  const related = scored.slice(0, MAX_EVIDENCE);
+  const related = retrieveRelated(trimmed, ctx);
   const sufficient = related.length >= MIN_RELATED_FOR_RECOMMENDATION;
+  const terms = extractTerms(trimmed);
 
   const topicsInQuestion = TOPIC_RULES.filter(rule => rule.patterns.some(pattern => pattern.test(trimmed))).map(rule => rule.name);
 
@@ -221,10 +227,81 @@ export function answerDecision(
     question: trimmed,
     sections,
     relatedCount: related.length,
-    sufficient
+    sufficient,
+    generatedBy: "rules"
   };
 }
 
 function KIND_CN(kind: string): string {
   return kind === "fact" ? "事实" : kind === "observation" ? "行为观察" : "待确认推测";
+}
+
+/** LLM 路径：同一检索 + 模型生成七段内容，全部经校验并强制附加不确定性段。 */
+export async function answerDecisionWithLLM(
+  question: string,
+  ctx: {
+    conversations: Conversation[];
+    messages: StoredChatMessage[];
+    insights: Insight[];
+    goals: Goal[];
+  },
+  config: LlmConfig
+): Promise<DecisionAnswer> {
+  const fallback = answerDecision(question, ctx);
+  const trimmed = question.trim();
+  const related = retrieveRelated(trimmed, ctx);
+  const evidenceList = related.map(item => ({
+    id: item.row.id,
+    title: item.row.title,
+    date: item.row.createdAt ?? null,
+    snippet: item.snippet
+  }));
+  const insightsSummary = ctx.insights.length
+    ? ctx.insights.map(insight => `【${KIND_CN(insight.kind)}·${insight.confidence}%】${insight.title}`).join("\n")
+    : "（暂无画像线索）";
+  const goalsSummary = ctx.goals.length
+    ? ctx.goals.map(goal => `「${goal.title}」进度 ${goal.progress}%`).join("\n")
+    : "（无）";
+  const userPrompt = [
+    `用户的问题：${trimmed}`,
+    "",
+    `检索到的相关历史（按相关性排序，共 ${evidenceList.length} 条）：`,
+    evidenceList.length
+      ? evidenceList.map(item => `[${item.id}] 《${item.title}》(${item.date?.slice(0, 10) ?? "时间未知"}) 摘录：${item.snippet}`).join("\n")
+      : "（无相关会话）",
+    "",
+    `画像线索：\n${insightsSummary}`,
+    `目标：\n${goalsSummary}`
+  ].join("\n");
+
+  const text = await chatCompletion(config, DECISION_SYSTEM_PROMPT, userPrompt);
+  const parsed = extractJson(text) as Record<string, unknown>;
+  const field = (name: string, fallbackText: string): string => {
+    const value = (parsed as Record<string, unknown>)?.[name];
+    return typeof value === "string" && value.trim() ? value.trim() : fallbackText;
+  };
+  const evidenceRefs = evidenceList.map(item => item.id);
+
+  const sections: DecisionSection[] = [
+    { title: "1. 问题理解", body: field("understanding", fallback.sections[0].body), evidenceRefs: [] },
+    { title: "2. 相关个人历史", body: field("history", fallback.sections[1].body), evidenceRefs },
+    { title: "3. 支持因素", body: field("supports", fallback.sections[2].body), evidenceRefs: [] },
+    { title: "4. 风险因素", body: field("risks", fallback.sections[3].body), evidenceRefs: [] },
+    { title: "5. 可行方案", body: field("plans", fallback.sections[4].body), evidenceRefs: [] },
+    { title: "6. 推荐方案及理由", body: field("recommendation", fallback.sections[5].body), evidenceRefs: evidenceRefs.slice(0, 1) },
+    {
+      title: "7. 不确定性",
+      body: [field("uncertaintyNotes", fallback.sections[6].body), "本参考由本地检索 + 模型生成，不是确定预测；最终决策及后果由你本人承担。"].join("\n"),
+      evidenceRefs: []
+    }
+  ];
+
+  return {
+    question: trimmed,
+    sections,
+    relatedCount: related.length,
+    sufficient: related.length >= MIN_RELATED_FOR_RECOMMENDATION,
+    generatedBy: "llm",
+    model: config.model
+  };
 }

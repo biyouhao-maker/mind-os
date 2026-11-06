@@ -2,17 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Conversation, Goal, Insight } from "@/lib/types";
+import type { Conversation, Goal, Insight, LlmConfig } from "@/lib/types";
 import { listAllMessages, type StoredChatMessage } from "@/lib/chat-archive";
-import { answerDecision, type DecisionAnswer } from "@/lib/decision-engine";
+import { answerDecision, answerDecisionWithLLM, type DecisionAnswer } from "@/lib/decision-engine";
+import { isLlmReady } from "@/lib/llm";
 
 type Props = {
   conversations: Conversation[];
   insights: Insight[];
   goals: Goal[];
+  llm: LlmConfig;
 };
 
-export default function DecisionAssistantPanel({ conversations, insights, goals }: Props) {
+export default function DecisionAssistantPanel({ conversations, insights, goals, llm }: Props) {
   const router = useRouter();
   const [messages, setMessages] = useState<StoredChatMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
@@ -39,11 +41,24 @@ export default function DecisionAssistantPanel({ conversations, insights, goals 
       return;
     }
     setBusy(true);
+    const ctx = { conversations, messages, insights, goals };
+    const runRules = (prefix?: string) => {
+      setAnswer(answerDecision(question, ctx));
+      if (prefix) setError(prefix);
+    };
     try {
-      setAnswer(answerDecision(question, { conversations, messages, insights, goals }));
+      if (isLlmReady(llm)) {
+        void answerDecisionWithLLM(question, ctx, llm)
+          .then(result => setAnswer(result))
+          .catch(error => {
+            setAnswer(answerDecision(question, ctx));
+            setError(`模型调用失败，已回退本地规则引擎：${error instanceof Error ? error.message : "未知错误"}`);
+          });
+      } else {
+        runRules();
+      }
     } catch (error) {
-      setError(error instanceof Error ? error.message : "生成参考失败。");
-      setAnswer(null);
+      runRules(error instanceof Error ? `生成失败：${error.message}，已回退本地规则引擎。` : undefined);
     } finally {
       setBusy(false);
     }
@@ -106,7 +121,8 @@ export default function DecisionAssistantPanel({ conversations, insights, goals 
           </div>
           {feedback && <p className="muted">{feedback}</p>}
           <p className="muted" style={{ marginTop: 8 }}>
-            相关证据 {answer.relatedCount} 条 · {answer.sufficient ? "证据量足够给出倾向" : "证据量不足，请谨慎参考"}
+            相关证据 {answer.relatedCount} 条 · {answer.sufficient ? "证据量足够给出倾向" : "证据量不足，请谨慎参考"} ·
+            {answer.generatedBy === "llm" ? ` 由模型 ${answer.model ?? ""} 生成` : " 由本地规则引擎生成"}
           </p>
         </div>
       )}

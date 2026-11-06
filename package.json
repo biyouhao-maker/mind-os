@@ -8,12 +8,13 @@
     "start": "next start",
     "lint": "eslint .",
     "gen:fixtures": "node tests/gen-fixtures.mjs",
-    "compile:lib": "tsc src/lib/chat-archive.ts src/lib/profile-analyzer.ts src/lib/growth-report.ts src/lib/decision-engine.ts --outDir .test-build --module commonjs --moduleResolution node10 --target es2022 --lib es2022,dom --skipLibCheck --esModuleInterop",
+    "compile:lib": "tsc src/lib/chat-archive.ts src/lib/profile-analyzer.ts src/lib/growth-report.ts src/lib/decision-engine.ts src/lib/llm.ts --outDir .test-build --module commonjs --moduleResolution node10 --target es2022 --lib es2022,dom --skipLibCheck --esModuleInterop",
     "test:parser": "npm run gen:fixtures && npm run compile:lib && node tests/run-parser-tests.mjs",
     "test:analyzer": "npm run compile:lib && node tests/run-analyzer-tests.mjs",
     "test:growth": "npm run compile:lib && node tests/run-growth-tests.mjs",
     "test:decision": "npm run compile:lib && node tests/run-decision-tests.mjs",
-    "test": "npm run test:parser && npm run test:analyzer && npm run test:growth && npm run test:decision",
+    "test:llm": "npm run compile:lib && node tests/run-llm-tests.mjs",
+    "test": "npm run test:parser && npm run test:analyzer && npm run test:growth && npm run test:decision && npm run test:llm",
     "test": "npm run test:parser && npm run test:analyzer"
   },
   "dependencies": {

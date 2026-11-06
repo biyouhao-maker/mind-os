@@ -9,8 +9,9 @@
  * - 最低证据门槛：同一话题至少命中 2 个会话才生成结论，不凭一次对话下结论。
  * - 健康数据不参与画像分析（本引擎只读聊天消息）。
  */
-import type { Conversation } from "./types";
+import type { Conversation, LlmConfig } from "./types";
 import type { StoredChatMessage } from "./chat-archive";
+import { chatCompletion, ANALYSIS_SYSTEM_PROMPT, extractJson, isLlmReady } from "./llm";
 
 export type EvidenceItem = {
   /** 会话索引行 id（`${importId}:${conversationId}`），用于跳转查看原始对话 */
@@ -103,6 +104,10 @@ export type AnalysisResult = {
     windowEnd: string | null;
     generatedAt: string;
   };
+  generatedBy: "rules" | "llm";
+  llmModel?: string;
+  /** LLM 启用但调用/解析失败时的原因（已自动回退规则引擎） */
+  llmError?: string;
 };
 
 /**
@@ -383,6 +388,92 @@ export function analyzeChatHistory(conversations: Conversation[], messages: Stor
       windowStart,
       windowEnd,
       generatedAt: new Date().toISOString()
+    },
+    generatedBy: "rules"
+  };
+}
+
+/**
+ * LLM 路径：先跑规则引擎拿到统计与证据结构，再把会话摘要交给模型生成候选。
+ * 模型返回的每条候选都经校验（类型白名单 / 置信度钳制 / 证据 ID 必须真实存在），
+ * 失败时自动回退规则结果并说明原因。
+ */
+export async function analyzeChatHistoryWithLLM(
+  conversations: Conversation[],
+  messages: StoredChatMessage[],
+  config: LlmConfig
+): Promise<AnalysisResult> {
+  const base = analyzeChatHistory(conversations, messages);
+  const rowById = new Map(conversations.map(row => [row.id, row]));
+  const llmCandidates: CandidateInsight[] = [];
+  let llmError: string | undefined;
+
+  if (isLlmReady(config)) {
+    const items: Array<{ id: string; title: string; month: string; sample: string; userMessages: number }> = [];
+    for (const row of conversations) {
+      const userTexts = messages
+        .filter(message => `${message.importId}:${message.conversationId}` === row.id && message.role === "user")
+        .map(message => message.text);
+      if (!userTexts.length) continue;
+      items.push({
+        id: row.id,
+        title: row.title,
+        month: (row.createdAt ?? "").slice(0, 7),
+        sample: (userTexts[0] ?? "").slice(0, 160),
+        userMessages: userTexts.length
+      });
     }
+    const promptParts = [
+      `分析窗口统计：会话 ${base.stats.conversationsAnalyzed} 个，用户消息 ${base.stats.userMessagesAnalyzed} 条，窗口 ${base.stats.windowStart ?? "?"} ~ ${base.stats.windowEnd ?? "?"}。`,
+      "会话摘要（JSON）：",
+      JSON.stringify(items.slice(0, 40))
+    ];
+
+    try {
+      const text = await chatCompletion(config, ANALYSIS_SYSTEM_PROMPT, promptParts.join("\n\n"));
+      const parsed = extractJson(text) as { insights?: unknown };
+      const list = Array.isArray((parsed as { insights?: unknown })?.insights) ? (parsed as { insights: unknown[] }).insights : [];
+      for (const raw of list.slice(0, 10)) {
+        const obj = (raw ?? {}) as Record<string, unknown>;
+        const title = typeof obj.title === "string" ? obj.title.trim() : "";
+        const category = (["兴趣领域", "能力技能", "思维习惯", "行为趋势"] as const).includes(obj.category as CandidateCategory)
+          ? (obj.category as CandidateCategory)
+          : null;
+        const kind = obj.kind === "observation" ? ("observation" as const) : obj.kind === "hypothesis" ? ("hypothesis" as const) : null;
+        const detail = typeof obj.detail === "string" ? obj.detail.trim() : "";
+        const confidenceNum = Number(obj.confidence);
+        const evidenceIds = Array.isArray(obj.evidenceIds)
+          ? obj.evidenceIds.filter((id): id is string => typeof id === "string" && rowById.has(id)).slice(0, 4)
+          : [];
+        if (!title || !category || !kind || !detail || !evidenceIds.length) continue;
+        const evidence: EvidenceItem[] = evidenceIds.map(id => {
+          const row = rowById.get(id);
+          return { conversationRowId: id, title: row?.title ?? id, date: row?.createdAt ?? null, matched: [] };
+        });
+        llmCandidates.push({
+          title,
+          category,
+          kind,
+          detail: `${detail}\n[说明] 本条由模型生成（${config.model}），属于推测性参考，须经你确认后才可作为画像依据。`,
+          evidenceText: evidence.map(item => `《${item.title}》`).join("、"),
+          evidenceRefs: evidenceIds,
+          evidence,
+          confidence: clampConfidence(confidenceNum),
+          timeRange: `${base.stats.windowStart ?? "?"} ~ ${base.stats.windowEnd ?? "?"}`
+        });
+      }
+      if (!llmCandidates.length) llmError = "模型未返回有效的候选线索，已回退本地规则结果。";
+    } catch (error) {
+      llmError = error instanceof Error ? error.message : "LLM 分析失败。";
+    }
+  }
+
+  const merged = [...llmCandidates, ...base.candidates].slice(0, 14);
+  return {
+    candidates: merged,
+    stats: base.stats,
+    generatedBy: llmCandidates.length ? "llm" : "rules",
+    llmModel: llmCandidates.length ? config.model : undefined,
+    llmError
   };
 }
