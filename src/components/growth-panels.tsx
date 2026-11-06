@@ -11,6 +11,7 @@ import {
   makeReport,
   resolveWindow
 } from "@/lib/growth-report";
+import { downloadTextFile, growthReportToMarkdown } from "@/lib/markdown-export";
 
 /* ================= 画像快照面板（数字画像页） ================= */
 
@@ -189,6 +190,12 @@ export function GrowthReportPanel({ conversations, insights, goals, growthLogs, 
           {!savedViewId && report && (
             <div className="actions">
               <button className="btn primary" onClick={() => { onSaveReport(report); setSavedViewId(report.id); }}>保存这份报告</button>
+              <button className="btn" onClick={() => downloadTextFile(`mind-os-report-${report.content.windowStart}.md`, growthReportToMarkdown(report))}>导出 Markdown</button>
+            </div>
+          )}
+          {savedViewId && viewReport && (
+            <div className="actions">
+              <button className="btn" onClick={() => downloadTextFile(`mind-os-report-${viewReport.content.windowStart}.md`, growthReportToMarkdown(viewReport))}>导出 Markdown</button>
             </div>
           )}
         </section>

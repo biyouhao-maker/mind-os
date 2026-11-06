@@ -6,6 +6,7 @@ import type { Conversation, Goal, Insight, LlmConfig } from "@/lib/types";
 import { listAllMessages, type StoredChatMessage } from "@/lib/chat-archive";
 import { answerDecision, answerDecisionWithLLM, type DecisionAnswer } from "@/lib/decision-engine";
 import { isLlmReady } from "@/lib/llm";
+import { decisionAnswerToMarkdown, downloadTextFile } from "@/lib/markdown-export";
 
 type Props = {
   conversations: Conversation[];
@@ -118,6 +119,15 @@ export default function DecisionAssistantPanel({ conversations, insights, goals,
           <div className="actions">
             <button className="btn" onClick={() => setFeedback("有帮助：已记录本次反馈（仅保存在当前页面）。")}>👍 有帮助</button>
             <button className="btn" onClick={() => setFeedback("没帮助：已记录本次反馈（仅保存在当前页面）。")}>👎 没帮助</button>
+            <button
+              className="btn"
+              onClick={() => downloadTextFile(
+                `mind-os-decision-${new Date().toISOString().slice(0, 10)}.md`,
+                decisionAnswerToMarkdown(answer, rowId => conversations.find(c => c.id === rowId)?.title ?? null)
+              )}
+            >
+              导出 Markdown
+            </button>
           </div>
           {feedback && <p className="muted">{feedback}</p>}
           <p className="muted" style={{ marginTop: 8 }}>
