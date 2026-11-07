@@ -4,10 +4,10 @@
  * 大文件解析优先走 Web Worker（chat-archive.worker.ts），避免阻塞界面。
  */
 import type { ParsedChatArchive, StoredChatMessage } from "./chat-archive-parse";
-import { parseChatGPTZip } from "./chat-archive-parse";
+import { parseArchiveAuto } from "./platform-adapters";
 
 export type { ChatRole, ChatConversationIndex, StoredChatMessage, ParsedChatArchive } from "./chat-archive-parse";
-export { parseChatArchiveFromBytes, parseChatGPTZip } from "./chat-archive-parse";
+export { parseArchiveAuto } from "./platform-adapters";
 
 const DB_NAME = "mind-os-chat-archive";
 const DB_VERSION = 2;
@@ -217,11 +217,14 @@ export async function parseChatGPTZipInWorker(file: File, timeoutMs = 120000): P
 }
 
 /** 自动调度：优先 Web Worker，环境不支持时回退主线程解析。 */
-export async function parseChatGPTZipAuto(file: File): Promise<ParsedChatArchive> {
+export async function parseChatArchiveAuto(file: File): Promise<ParsedChatArchive> {
   try {
     return await parseChatGPTZipInWorker(file);
   } catch (error) {
-    if (error instanceof WorkerUnavailableError) return parseChatGPTZip(file);
+    if (error instanceof WorkerUnavailableError) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      return parseArchiveAuto(bytes, file.name);
+    }
     throw error;
   }
 }

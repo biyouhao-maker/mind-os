@@ -7,7 +7,7 @@ import {
   findImportByHash,
   getConversationMessages,
   listImports,
-  parseChatGPTZipAuto,
+  parseChatArchiveAuto,
   saveArchive,
   type ImportRecord,
   type ParsedChatArchive,
@@ -69,13 +69,14 @@ export default function ChatImportPanel({ conversations, onImported, onRemoved }
     setNotice("");
     setPreview(null);
     try {
-      if (!file.name.toLowerCase().endsWith(".zip")) {
-        throw new Error("请选择 ChatGPT 官方导出的 ZIP 文件，而不是单独的 JSON。");
+      const lowerName = file.name.toLowerCase();
+      if (!lowerName.endsWith(".zip") && !lowerName.endsWith(".json")) {
+        throw new Error("请选择官方导出文件：ChatGPT ZIP、Claude 导出（JSON 或 ZIP）、Gemini Takeout JSON。");
       }
       if (file.size > 250 * 1024 * 1024) {
-        throw new Error("ZIP 文件超过 250MB。为避免浏览器内存不足，本版本暂不处理这么大的文件。");
+        throw new Error("文件超过 250MB。为避免浏览器内存不足，本版本暂不处理这么大的文件。");
       }
-      const archive = await parseChatGPTZipAuto(file);
+      const archive = await parseChatArchiveAuto(file);
       const duplicate = await findImportByHash(archive.fileHash);
       if (duplicate) {
         setNotice(`检测到重复文件：${duplicate.fileName}（导入于 ${new Date(duplicate.importedAt).toLocaleString()}）。本次未重复导入，原有批次仍保留。`);
@@ -111,7 +112,7 @@ export default function ChatImportPanel({ conversations, onImported, onRemoved }
         sourceImportId: importId,
         sourceConversationId: item.conversationId,
         title: item.title,
-        platform: "ChatGPT",
+        platform: archive.platform,
         messageCount: item.messageCount,
         importedAt,
         createdAt: item.createdAt,
@@ -190,9 +191,9 @@ export default function ChatImportPanel({ conversations, onImported, onRemoved }
       <section className="panel">
         <div className="panel-head">
           <div>
-            <div className="eyebrow">CHATGPT OFFICIAL EXPORT</div>
-            <h3>导入 ChatGPT 完整历史</h3>
-            <p>选择 ChatGPT 官方数据导出 ZIP。文件在浏览器本地解析，不会上传到任何服务器。</p>
+            <div className="eyebrow">PLATFORM EXPORT IMPORT</div>
+            <h3>导入 AI 平台完整历史</h3>
+            <p>选择官方数据导出文件（ChatGPT ZIP / Claude JSON·ZIP / Gemini Takeout JSON）。文件在浏览器本地解析，不会上传到任何服务器。</p>
           </div>
           <span className="count-pill">3.0 修正版</span>
         </div>
@@ -202,11 +203,11 @@ export default function ChatImportPanel({ conversations, onImported, onRemoved }
         </div>
         <div className="drop-zone">
           <div className="upload-icon">⇧</div>
-          <b>{busy ? "正在解析文件…" : "选择 ChatGPT 官方导出 ZIP"}</b>
-          <p>支持 ZIP 内含 conversations.json 的常见官方导出结构；当前单个 ZIP 限制 250MB。</p>
-          <input ref={inputRef} type="file" accept=".zip,application/zip" hidden onChange={event => void handleFile(event.target.files?.[0])} />
+          <b>{busy ? "正在解析文件…" : "选择官方导出文件"}</b>
+          <p>ChatGPT 官方 ZIP · Claude 导出（JSON 或 ZIP）· Gemini Takeout JSON；当前单个文件限制 250MB。</p>
+          <input ref={inputRef} type="file" accept=".zip,application/zip,.json,application/json" hidden onChange={event => void handleFile(event.target.files?.[0])} />
           <button className="button button-primary" disabled={busy} onClick={() => inputRef.current?.click()}>
-            {busy ? "请稍候…" : "选择 ZIP 文件"}
+            {busy ? "请稍候…" : "选择导出文件"}
           </button>
         </div>
         {notice && <div className="inline-message" role="status">{notice}</div>}
@@ -263,10 +264,10 @@ export default function ChatImportPanel({ conversations, onImported, onRemoved }
           <div className="table-list">
             {conversations.slice(0, 100).map(row => (
               <div className="table-row" key={row.id}>
-                <span className="file-badge">GPT</span>
+                <span className="file-badge">{row.platform.slice(0, 4)}</span>
                 <div className="table-main">
                   <b>{row.title}</b>
-                  <small>{row.createdAt ? new Date(row.createdAt).toLocaleString() : "时间未知"} · {row.messageCount} 条消息</small>
+                  <small>{row.platform} · {row.createdAt ? new Date(row.createdAt).toLocaleString() : "时间未知"} · {row.messageCount} 条消息</small>
                 </div>
                 <button className="button button-secondary" onClick={() => void openConversation(row)}>查看完整消息</button>
               </div>

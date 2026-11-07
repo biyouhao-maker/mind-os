@@ -12,8 +12,15 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(here, "..");
 const buildDir = path.join(projectRoot, ".test-build");
 
-const parserMod = await import(pathToFileURL(path.join(buildDir, "chat-archive-parse.js")).href);
-const { parseChatGPTZip } = parserMod.default ?? parserMod;
+const parserMod = await import(pathToFileURL(path.join(buildDir, "platform-adapters.js")).href);
+const { parseArchiveAuto, parseChatGPTZip } = parserMod.default ?? parserMod;
+const parseReal = async (nameOrFile) => {
+  const bytes = typeof nameOrFile === "string"
+    ? new Uint8Array(fs.readFileSync(path.join(fixtures, nameOrFile)))
+    : new Uint8Array(await nameOrFile.arrayBuffer());
+  const fileName = typeof nameOrFile === "string" ? nameOrFile : nameOrFile.name;
+  return parseArchiveAuto(bytes, fileName);
+};
 
 const fixtures = path.join(here, "fixtures");
 const load = name => new File([fs.readFileSync(path.join(fixtures, name))], name, { type: "application/zip" });
@@ -33,11 +40,11 @@ async function test(name, fn) {
 
 console.log("== A/B. 正常解析与数据完整性 ==");
 
-const validFile = load("valid.zip");
-const valid = await parseChatGPTZip(validFile);
+const valid = await parseReal("valid.zip");
 
-await test("解析出 3 个会话", () => {
+await test("解析出 3 个会话且平台标注为 ChatGPT", () => {
   assert.equal(valid.conversations.length, 3);
+  assert.equal(valid.platform, "ChatGPT");
 });
 
 await test("会话 ID / 标题正确", () => {
@@ -110,14 +117,14 @@ await test("总数与分类计数一致", () => {
 });
 
 await test("SHA-256 文件哈希：相同文件哈希一致，不同文件不同", async () => {
-  const again = await parseChatGPTZip(load("valid.zip"));
+  const again = await parseReal(load("valid.zip"));
   assert.equal(again.fileHash, valid.fileHash);
-  const overlap = await parseChatGPTZip(load("overlap.zip"));
+  const overlap = await parseReal(load("overlap.zip"));
   assert.notEqual(overlap.fileHash, valid.fileHash);
 });
 
 await test("跨批次同 ID 会话：解析层保持同 ID（隔离由存储复合索引保证）", async () => {
-  const overlap = await parseChatGPTZip(load("overlap.zip"));
+  const overlap = await parseReal(load("overlap.zip"));
   assert.equal(overlap.conversations[0].conversationId, "conv-001");
   assert.equal(overlap.conversations[0].title, "同 ID 的另一个会话");
   assert.equal(overlap.totalRawMessages, 1);
@@ -125,28 +132,70 @@ await test("跨批次同 ID 会话：解析层保持同 ID（隔离由存储复�
 
 console.log("== A. 异常输入 ==");
 
-await test("conversations.json 缺失 → 明确报错", async () => {
-  await assert.rejects(() => parseChatGPTZip(load("missing-conversations.zip")), /没有在 ZIP 内找到 conversations\.json/);
+await test("conversations.json 缺失 → 列出支持格式", async () => {
+  await assert.rejects(() => parseReal(load("missing-conversations.zip")), /无法识别的导出格式/);
 });
 
 await test("JSON 格式错误 → 明确报错", async () => {
-  await assert.rejects(() => parseChatGPTZip(load("bad-json.zip")), /不是有效的 JSON/);
+  await assert.rejects(() => parseReal(load("bad-json.zip")), /不是有效的 JSON/);
 });
 
-await test("ZIP 损坏（原始坏字节）→ 明确报错", async () => {
-  await assert.rejects(() => parseChatGPTZip(load("corrupted.zip")), /损坏或无法解压/);
+await test("原始坏字节 → 提示无法识别（无法得知目标格式）", async () => {
+  await assert.rejects(() => parseReal(load("corrupted.zip")), /无法识别的导出格式/);
 });
 
-await test("空文件（0 字节）→ 明确报错", async () => {
-  await assert.rejects(() => parseChatGPTZip(load("empty.zip")), /损坏或无法解压/);
+await test("空文件（0 字节）→ 提示无法识别", async () => {
+  await assert.rejects(() => parseReal(load("empty.zip")), /无法识别的导出格式/);
 });
 
-await test("合法但无条目的 ZIP → 提示缺少 conversations.json", async () => {
-  await assert.rejects(() => parseChatGPTZip(load("empty-archive.zip")), /没有在 ZIP 内找到 conversations\.json/);
+await test("PK 头但中央目录损坏 → 报 ZIP 损坏", async () => {
+  await assert.rejects(() => parseReal(load("truncated.zip")), /损坏或无法解压/);
 });
 
-await test("空对话数组 → 明确报错", async () => {
-  await assert.rejects(() => parseChatGPTZip(load("empty-conversations.zip")), /没有包含任何对话/);
+await test("合法但无匹配格式的 ZIP → 列出支持格式", async () => {
+  await assert.rejects(() => parseReal(load("empty-archive.zip")), /无法识别的导出格式/);
+});
+
+await test("空对话数组（无 mapping/chat_messages）→ 列出支持格式", async () => {
+  await assert.rejects(() => parseReal(load("empty-conversations.zip")), /无法识别的导出格式/);
+});
+
+console.log("== Claude / Gemini 适配器 ==");
+
+await test("Claude 单文件 JSON：平台标注、角色映射、标题与时间", async () => {
+  const claude = await parseReal("claude-export.json");
+  assert.equal(claude.platform, "Claude");
+  assert.equal(claude.conversations.length, 1);
+  assert.equal(claude.conversations[0].title, "Claude 里的职业讨论");
+  assert.equal(claude.conversations[0].conversationId, "claude-conv-01");
+  const byId = Object.fromEntries(claude.messages.map(m => [m.sourceMessageId, m]));
+  assert.equal(byId["cm-1"].role, "user");
+  assert.equal(byId["cm-2"].role, "assistant");
+  assert.equal(byId["cm-1"].text, "我在考虑转做 AI 产品经理");
+  assert.equal(byId["cm-1"].createdAt, "2026-09-15T08:01:00.000Z");
+});
+
+await test("Claude ZIP：与单文件解析结果一致", async () => {
+  const claude = await parseReal("claude-export.zip");
+  assert.equal(claude.platform, "Claude");
+  assert.equal(claude.totalRawMessages, 2);
+});
+
+await test("Gemini Takeout（实验）：prompt/answer 转为 user/assistant", async () => {
+  const gemini = await parseReal("gemini-takeout.json");
+  assert.equal(gemini.platform, "Gemini");
+  assert.equal(gemini.conversations.length, 1);
+  assert.equal(gemini.conversations[0].title, "Gemini 学习规划");
+  assert.equal(gemini.messages.length, 2);
+  assert.equal(gemini.messages[0].role, "user");
+  assert.equal(gemini.messages[0].text, "帮我制定 Gemini 使用计划");
+  assert.equal(gemini.messages[1].role, "assistant");
+});
+
+await test("不同平台的 importId 前缀不同（由面板组合，此处校验哈希一致性）", async () => {
+  const claudeA = await parseReal("claude-export.json");
+  const claudeB = await parseReal("claude-export.json");
+  assert.equal(claudeA.fileHash, claudeB.fileHash);
 });
 
 console.log(`\n结果：${passed} 通过，${failures.length} 失败`);

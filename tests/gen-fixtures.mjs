@@ -78,4 +78,41 @@ fs.writeFileSync(path.join(outDir, "empty.zip"), Buffer.alloc(0));
 console.log("生成 empty.zip（0 字节）");
 // 合法但没有条目的 ZIP
 writeZip("empty-archive.zip", {});
+
+/* Claude 官方导出（单文件 JSON 与 ZIP 两种） */
+const claudeConv = {
+  uuid: "claude-conv-01",
+  name: "Claude 里的职业讨论",
+  created_at: "2026-09-15T08:00:00.000Z",
+  chat_messages: [
+    { uuid: "cm-1", sender: "human", text: "我在考虑转做 AI 产品经理", created_at: "2026-09-15T08:01:00.000Z" },
+    { uuid: "cm-2", sender: "assistant", text: "这个方向需要产品+技术双能力。", created_at: "2026-09-15T08:02:00.000Z" }
+  ]
+};
+fs.writeFileSync(path.join(outDir, "claude-export.json"), JSON.stringify([claudeConv]));
+console.log("生成 claude-export.json");
+writeZip("claude-export.zip", { "conversations.json": strToU8(JSON.stringify([claudeConv])) });
+console.log("生成 claude-export.zip");
+
+/* Gemini Takeout（实验格式） */
+const geminiTakeout = {
+  "Gemini Apps": [
+    {
+      Title: "Gemini 学习规划",
+      Time: "2026-10-10T09:00:00Z",
+      Interaction: [
+        { prompt: "帮我制定 Gemini 使用计划", answer: ["好的，计划如下…"], Time: "2026-10-10T09:05:00Z" }
+      ]
+    }
+  ]
+};
+fs.writeFileSync(path.join(outDir, "gemini-takeout.json"), JSON.stringify(geminiTakeout));
+console.log("生成 gemini-takeout.json");
+// 合法 ZIP 截断一半（PK 头存在但中央目录损坏）
+writeZip("empty-archive.zip", {});
+{
+  const full = fs.readFileSync(path.join(outDir, "valid.zip"));
+  fs.writeFileSync(path.join(outDir, "truncated.zip"), full.subarray(0, Math.floor(full.length / 2)));
+  console.log("生成 truncated.zip（合法 ZIP 截断一半）");
+}
 console.log("全部 fixtures 生成完毕 →", outDir);

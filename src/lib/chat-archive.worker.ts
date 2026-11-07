@@ -3,7 +3,7 @@
  * 解析 Worker：unzipSync + JSON.parse + mapping 树提取都在本线程执行，
  * 主线程只接收结构化结果（buffer 以零拷贝转移进来）。
  */
-import { parseChatArchiveFromBytes } from "./chat-archive-parse";
+import { parseArchiveAuto } from "./platform-adapters";
 import type { ParsedChatArchive } from "./chat-archive-parse";
 
 type WorkerRequest = { buffer: ArrayBuffer; fileName: string };
@@ -12,7 +12,7 @@ type WorkerResponse = { ok: true; archive: ParsedChatArchive } | { ok: false; er
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   const request = event.data;
   try {
-    const archive = await parseChatArchiveFromBytes(new Uint8Array(request.buffer), request.fileName);
+    const archive = await parseArchiveAuto(new Uint8Array(request.buffer), request.fileName);
     (self as unknown as { postMessage: (data: WorkerResponse) => void }).postMessage({ ok: true, archive });
   } catch (error) {
     (self as unknown as { postMessage: (data: WorkerResponse) => void }).postMessage({
