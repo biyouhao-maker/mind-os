@@ -112,7 +112,7 @@ export default function DecisionAssistantPanel({ conversations, insights, goals,
       {error && <p className="muted" style={{ color: "#bd4d46" }}>{error}</p>}
 
       {answer && (
-        <div className="decision" style={{ marginTop: 14 }}>
+        <div className="decision print-area" style={{ marginTop: 14 }}>
           {answer.sections.map(section => (
             <div key={section.title} style={{ marginBottom: 10 }}>
               <b style={{ fontSize: 11 }}>{section.title}</b>
@@ -143,6 +143,7 @@ export default function DecisionAssistantPanel({ conversations, insights, goals,
             >
               导出 Markdown
             </button>
+            <button className="btn" onClick={() => window.print()}>导出 PDF（浏览器打印）</button>
           </div>
           {feedback && <p className="muted">{feedback}</p>}
           <p className="muted" style={{ marginTop: 8 }}>

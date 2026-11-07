@@ -159,7 +159,7 @@ export function GrowthReportPanel({ conversations, insights, goals, growthLogs, 
       </section>
 
       {viewReport && (
-        <section className="panel" style={{ marginTop: 16 }}>
+        <section className="panel print-area" style={{ marginTop: 16 }}>
           <div className="panel-head">
             <h3>{viewReport.content.periodLabel}（{viewReport.content.windowStart} ~ {viewReport.content.windowEnd}）</h3>
           </div>
@@ -191,11 +191,13 @@ export function GrowthReportPanel({ conversations, insights, goals, growthLogs, 
             <div className="actions">
               <button className="btn primary" onClick={() => { onSaveReport(report); setSavedViewId(report.id); }}>保存这份报告</button>
               <button className="btn" onClick={() => downloadTextFile(`mind-os-report-${report.content.windowStart}.md`, growthReportToMarkdown(report))}>导出 Markdown</button>
+              <button className="btn" onClick={() => window.print()}>导出 PDF（浏览器打印）</button>
             </div>
           )}
           {savedViewId && viewReport && (
             <div className="actions">
               <button className="btn" onClick={() => downloadTextFile(`mind-os-report-${viewReport.content.windowStart}.md`, growthReportToMarkdown(viewReport))}>导出 Markdown</button>
+              <button className="btn" onClick={() => window.print()}>导出 PDF（浏览器打印）</button>
             </div>
           )}
         </section>

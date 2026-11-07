@@ -62,3 +62,21 @@
 .snapshot-diff b { font-size:11px; color:var(--ink,#18212f); }
 .snapshot-diff p { font-size:10px; color:var(--muted,#8792a1); line-height:1.8; margin:5px 0; }
 .snapshot-diff strong { color:var(--ink,#18212f); }
+
+/* MIND OS 3.0 — 打印 / 导出 PDF：仅打印 .print-area 内容 */
+@media print {
+  body * { visibility: hidden !important; }
+  .print-area, .print-area * { visibility: visible !important; }
+  .print-area {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 24px;
+    background: #ffffff;
+    color: #000000;
+  }
+  .print-area .panel { border: 0; box-shadow: none; background: #ffffff; }
+  .print-area .actions, .print-area button, .print-area .delete { display: none !important; }
+  .print-area pre, .print-area p, .print-area small, .print-area b, .print-area strong { color: #000000; }
+  .sidebar, .topbar, .footer, .notice { display: none !important; }
+}

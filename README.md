@@ -1,6 +1,9 @@
-# MIND OS 2.0
+# MIND OS 3.0 — 跨 AI 平台个人智能分析与决策系统（本地优先 MVP）
 
-本地运行的个人智能操作系统 MVP。技术栈：Next.js + React + TypeScript + 浏览器 localStorage。
+技术栈：Next.js（App Router）+ React + TypeScript + 浏览器 localStorage / IndexedDB + fflate。
+
+> **当前形态**：本地优先 MVP。所有数据保存在你自己的浏览器里，可导出 JSON 备份迁移；
+> 可选接入你自己的 LLM 接口（BYOK）增强分析。云端同步见 `docs/cloud-design.md`（设计稿，未实现）。
 
 ## 环境要求
 Node.js 20.9 或更高版本，npm。
@@ -18,44 +21,38 @@ npm run build
 npm start
 ```
 
-## 功能
-- Dashboard：画像、目标、成长记录与 AI 数据概览。
-- 数字画像：基础资料、兴趣、优势、技能、思维偏好；画像线索可区分事实、观察、推测，并保留证据。
-- 个人成长：创建目标、调整进度、记录成长日志。
-- AI 数据中心：平台接入状态、JSON/JSONL 文件本地索引预览。
-- 健康管理：饮食、饮水、睡眠、运动、体重记录。
-- 决策助手：记录问题、备选方案、收益、风险、最终选择和复盘。
-- 设置与隐私：导出 JSON 备份、恢复备份、清空本地数据。
-
-## 数据说明
-所有数据保存在当前浏览器 localStorage，不会自动上传。清理浏览器网站数据或更换设备可能导致数据不可用，请定期导出备份。当前版本不包含登录、多设备同步、云端数据库、AI 模型推理或官方 OAuth。AI 平台状态仅为手动记录；文件导入是通用预览解析，不保证识别所有平台格式。请勿导入不希望保存在当前浏览器中的敏感数据。
-
-
-## MIND OS 3.0 Alpha 1 — ChatGPT archive import
-
-This alpha adds browser-local import of a ChatGPT official export ZIP containing
-`conversations.json`. It stores conversation indexes in the existing local app
-data and complete message records in IndexedDB (`mind-os-chat-archive`).
-
-Each stored message includes role, author name, timestamp, source message ID,
-parent node ID, extracted text, and the original message JSON. ZIP files are
-hashed with SHA-256 to prevent importing the exact same archive twice.
-
-### Install and run
-
+## 测试
 ```bash
-npm install
-npm run dev
+npm run test        # 全部六套（parser / analyzer / growth / decision / llm / export）
+npm run test:parser # 单独运行
 ```
 
-Open `http://localhost:3000`, then go to **AI 数据中心** and choose the official
-ChatGPT export ZIP.
+## 功能
+- **AI 数据中心**：ChatGPT 官方 ZIP / Claude 官方导出（JSON·ZIP）/ Gemini Takeout（实验）导入；
+  SHA-256 去重；批次隔离与删除；原始消息与 rawJson 全量保存在 IndexedDB；
+  大文件解析在 Web Worker 后台执行（不支持时自动回退主线程）。
+- **数字画像**：基础资料、兴趣、优势、技能、思维偏好；画像线索区分事实、行为观察、推测并保留证据；
+  本地规则 / LLM（BYOK）双模式分析，候选需用户确认采纳。
+- **个人成长**：目标创建与进度调整、成长日志；画像快照与跨时间对比；月 / 季 / 年成长报告。
+- **健康管理**：饮食、饮水、睡眠、运动、体重记录（不参与画像推断，不做医疗诊断）。
+- **决策助手**：决策日志 + 智能决策参考（历史检索 + 七段结构 + 证据跳转 + 反馈持久化）。
+- **设置与隐私**：LLM BYOK 配置（API Key 仅存本机、备份自动剔除）、JSON 备份 / 恢复
+  （结构校验 + 计数对比 + 二次确认）、清空本地数据。
 
-### Important limits
+## 部署（Vercel / 静态托管）
 
-- This is a local-browser alpha, not cloud sync and not an official ChatGPT API connection.
-- Only ChatGPT ZIP archives containing `conversations.json` are implemented in this phase.
-- ZIP files over 250 MB are rejected to reduce browser memory risk.
-- IndexedDB data can be removed if browser site data is cleared. Keep the original export ZIP and regular backups.
-- The parser retains raw message JSON, but non-text attachments are not yet downloaded or rendered as media.
-- Existing 2.0 user data remains in the same localStorage key; no automatic migration or deletion is performed.
+本项目为纯客户端应用（无服务端 API 路由），可部署到 Vercel 或任何静态托管：
+
+1. 把仓库推到 GitHub（`git push`）。
+2. Vercel 控制台 → Add New Project → 选择该仓库 → Framework 自动识别为 Next.js → Deploy。
+3. 或使用命令行：`npx vercel`（首次会引导登录）。
+
+注意事项：
+- 部署后站点运行在**新的域名**下，浏览器数据（localStorage / IndexedDB）是全新隔离的，
+  需要重新导入数据或先在本地导出 JSON 备份再导入。
+- LLM BYOK 的 API Key 保存在浏览器 localStorage，同样不会随代码或备份上传。
+- 无需配置任何环境变量即可运行（当前版本没有服务端密钥）。
+
+## 云端同步
+设计稿见 `docs/cloud-design.md`（Supabase 表结构、RLS、同步策略）——**尚未实现**，
+实现前所有数据仅保存在浏览器本地。
