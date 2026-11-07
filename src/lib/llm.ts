@@ -74,21 +74,38 @@ export async function chatCompletion(config: LlmConfig, system: string, user: st
     throw new Error("接口地址仅支持 http / https 协议。");
   }
   let response: Response;
+  const payload = {
+    model: config.model,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user }
+    ],
+    temperature: 0.4
+  };
   try {
+    // 第一步：浏览器直连（部分端点允许 CORS，如本地 Ollama 配置 OLLAMA_ORIGINS 后）
     response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
-      body: JSON.stringify({
-        model: config.model,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user }
-        ],
-        temperature: 0.4
-      })
+      body: JSON.stringify(payload)
     });
   } catch {
-    throw new Error("无法连接模型接口（网络错误或地址不可达）。");
+    // 直连失败（云端 API 普遍不返回 CORS 头）→ 自动改走同源代理 /api/llm
+    try {
+      response = await fetch("/api/llm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: config.baseUrl,
+          apiKey: config.apiKey,
+          model: config.model,
+          messages: payload.messages,
+          temperature: 0.4
+        })
+      });
+    } catch {
+      throw new Error("无法连接模型接口（网络错误或地址不可达）。");
+    }
   }
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 140);
