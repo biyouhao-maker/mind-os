@@ -16,7 +16,7 @@
     "test:decision": "npm run compile:lib && node tests/run-decision-tests.mjs",
     "test:llm": "npm run compile:lib && node tests/run-llm-tests.mjs",
     "test:export": "npm run compile:lib && node tests/run-export-tests.mjs",
-    "test": "npm run test:parser && npm run test:analyzer"
+    "test": "npm run test:parser && npm run test:analyzer && npm run test:growth && npm run test:decision && npm run test:llm && npm run test:export"
   },
   "dependencies": {
     "fflate": "^0.8.2",
@@ -30,7 +30,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "15.3.3",
+    "eslint-config-next": "^16.4.5",
     "typescript": "^5.8.3"
   }
 }

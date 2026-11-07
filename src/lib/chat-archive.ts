@@ -180,6 +180,43 @@ export async function deleteArchive(importId: string): Promise<void> {
   }
 }
 
+/**
+ * 彻底删除整个聊天归档数据库（消息 + 导入记录）。
+ * 用于「清空本地全部数据」：清空必须覆盖 IndexedDB，否则用户会误以为聊天正文已删除。
+ * 其他标签页占用数据库时会 reject（onblocked），调用方据此如实提示失败。
+ */
+export async function clearAllChatData(): Promise<void> {
+  if (typeof indexedDB === "undefined") {
+    throw new Error("当前环境不支持 IndexedDB。");
+  }
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error ?? new Error("删除本地消息数据库失败。"));
+    request.onblocked = () => reject(new Error("本地消息数据库正被其他标签页占用，请关闭所有 MIND OS 标签页后重试。"));
+  });
+}
+
+/**
+ * 用备份中的数据整体替换 IndexedDB 聊天归档（先清空两库，再写入）。
+ * 用于「从备份恢复」：恢复后的 IndexedDB 内容与备份完全一致，幂等可重放。
+ */
+export async function restoreChatArchiveReplace(imports: ImportRecord[], messages: StoredChatMessage[]): Promise<void> {
+  const db = await openDb();
+  try {
+    const tx = db.transaction([MESSAGE_STORE, IMPORT_STORE], "readwrite");
+    const messageStore = tx.objectStore(MESSAGE_STORE);
+    const importStore = tx.objectStore(IMPORT_STORE);
+    messageStore.clear();
+    importStore.clear();
+    for (const message of messages) messageStore.put(message);
+    for (const record of imports) importStore.put(record);
+    await transactionDone(tx);
+  } finally {
+    db.close();
+  }
+}
+
 export class WorkerUnavailableError extends Error {}
 
 /**
