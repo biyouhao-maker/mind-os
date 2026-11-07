@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Conversation, Goal, Insight, LlmConfig } from "@/lib/types";
+import type { Conversation, DecisionFeedback, Goal, Insight, LlmConfig } from "@/lib/types";
 import { listAllMessages, type StoredChatMessage } from "@/lib/chat-archive";
 import { answerDecision, answerDecisionWithLLM, type DecisionAnswer } from "@/lib/decision-engine";
 import { isLlmReady } from "@/lib/llm";
@@ -13,9 +13,11 @@ type Props = {
   insights: Insight[];
   goals: Goal[];
   llm: LlmConfig;
+  feedbacks: DecisionFeedback[];
+  onFeedback: (entry: DecisionFeedback) => void;
 };
 
-export default function DecisionAssistantPanel({ conversations, insights, goals, llm }: Props) {
+export default function DecisionAssistantPanel({ conversations, insights, goals, llm, feedbacks, onFeedback }: Props) {
   const router = useRouter();
   const [messages, setMessages] = useState<StoredChatMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
@@ -70,6 +72,19 @@ export default function DecisionAssistantPanel({ conversations, insights, goals,
     router.push("/integrations");
   }
 
+  function recordFeedback(helpful: boolean) {
+    if (!answer) return;
+    onFeedback({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      question: answer.question.slice(0, 120),
+      generatedBy: answer.generatedBy,
+      helpful,
+      relatedCount: answer.relatedCount,
+      createdAt: new Date().toISOString()
+    });
+    setFeedback(helpful ? "已记录：有帮助（反馈已持久化，可在备份中迁移）。" : "已记录：没帮助（反馈已持久化，可在备份中迁移）。");
+  }
+
   return (
     <section className="panel">
       <div className="panel-head">
@@ -117,8 +132,8 @@ export default function DecisionAssistantPanel({ conversations, insights, goals,
             </div>
           ))}
           <div className="actions">
-            <button className="btn" onClick={() => setFeedback("有帮助：已记录本次反馈（仅保存在当前页面）。")}>👍 有帮助</button>
-            <button className="btn" onClick={() => setFeedback("没帮助：已记录本次反馈（仅保存在当前页面）。")}>👎 没帮助</button>
+            <button className="btn" onClick={() => recordFeedback(true)}>👍 有帮助</button>
+            <button className="btn" onClick={() => recordFeedback(false)}>👎 没帮助</button>
             <button
               className="btn"
               onClick={() => downloadTextFile(
@@ -133,6 +148,7 @@ export default function DecisionAssistantPanel({ conversations, insights, goals,
           <p className="muted" style={{ marginTop: 8 }}>
             相关证据 {answer.relatedCount} 条 · {answer.sufficient ? "证据量足够给出倾向" : "证据量不足，请谨慎参考"} ·
             {answer.generatedBy === "llm" ? ` 由模型 ${answer.model ?? ""} 生成` : " 由本地规则引擎生成"}
+            {feedbacks.length ? ` · 历史反馈 ${feedbacks.length} 条（最近：${feedbacks[0].helpful ? "👍" : "👎"}）` : ""}
           </p>
         </div>
       )}

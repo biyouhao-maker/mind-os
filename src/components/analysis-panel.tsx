@@ -6,6 +6,7 @@ import type { Conversation, Insight, LlmConfig } from "@/lib/types";
 import { listAllMessages } from "@/lib/chat-archive";
 import { analyzeChatHistory, analyzeChatHistoryWithLLM, type AnalysisResult, type CandidateInsight } from "@/lib/profile-analyzer";
 import { isLlmReady } from "@/lib/llm";
+import { isSimilarToAny } from "@/lib/text-similarity";
 
 type Props = {
   conversations: Conversation[];
@@ -51,6 +52,11 @@ export default function AnalysisPanel({ conversations, insights, llm, onAdopt }:
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const adoptedTitles = new Set(insights.map(item => item.title));
+  // 语义级近似去重：候选与已有线索（标题+详情）二元组相似度 ≥0.55 视为重复
+  const existingTexts = insights.map(item => `${item.title} ${item.detail}`);
+  function isDuplicate(candidate: CandidateInsight): boolean {
+    return isSimilarToAny(`${candidate.category}｜${candidate.title} ${candidate.detail}`, existingTexts);
+  }
 
   async function run() {
     setRunning(true);
@@ -104,7 +110,7 @@ export default function AnalysisPanel({ conversations, insights, llm, onAdopt }:
   }
 
   const visible = result
-    ? result.candidates.filter(candidate => !adoptedTitles.has(`【${candidate.category}】${candidate.title}`) && !dismissed.has(candidate.title))
+    ? result.candidates.filter(candidate => !adoptedTitles.has(`【${candidate.category}】${candidate.title}`) && !dismissed.has(candidate.title) && !isDuplicate(candidate))
     : [];
   const processedCount = result ? result.candidates.length - visible.length : 0;
 
@@ -165,9 +171,9 @@ export default function AnalysisPanel({ conversations, insights, llm, onAdopt }:
           </div>
         </div>
       ))}
-      {result && !visible.length && (
-        <p className="muted">全部候选已处理。对话数据变化后可再次「运行分析」刷新结论。</p>
-      )}
+          {result && !visible.length && (
+            <p className="muted">全部候选已处理（采纳、忽略或与已有线索相似度较高被自动跳过）。对话数据变化后可再次「运行分析」刷新结论。</p>
+          )}
     </Panel>
   );
 }

@@ -10,7 +10,7 @@
  * - 健康数据不参与画像分析（本引擎只读聊天消息）。
  */
 import type { Conversation, LlmConfig } from "./types";
-import type { StoredChatMessage } from "./chat-archive";
+import type { StoredChatMessage } from "./chat-archive-parse";
 import { chatCompletion, ANALYSIS_SYSTEM_PROMPT, extractJson, isLlmReady } from "./llm";
 
 export type EvidenceItem = {

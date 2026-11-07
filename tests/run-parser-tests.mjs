@@ -12,7 +12,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(here, "..");
 const buildDir = path.join(projectRoot, ".test-build");
 
-const parserMod = await import(pathToFileURL(path.join(buildDir, "chat-archive.js")).href);
+const parserMod = await import(pathToFileURL(path.join(buildDir, "chat-archive-parse.js")).href);
 const { parseChatGPTZip } = parserMod.default ?? parserMod;
 
 const fixtures = path.join(here, "fixtures");

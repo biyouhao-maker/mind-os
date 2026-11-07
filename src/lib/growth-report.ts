@@ -10,7 +10,7 @@
  * 不生成没有数据支撑的"进步"叙述。健康数据不参与。
  */
 import type { Conversation, Goal, GrowthLog, GrowthReportData, Insight, Report, Snapshot } from "./types";
-import type { StoredChatMessage } from "./chat-archive";
+import type { StoredChatMessage } from "./chat-archive-parse";
 import { TOPIC_RULES } from "./profile-analyzer";
 
 function inWindow(iso: string | null | undefined, start: string, end: string): boolean {

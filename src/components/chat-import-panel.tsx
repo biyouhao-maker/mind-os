@@ -7,7 +7,7 @@ import {
   findImportByHash,
   getConversationMessages,
   listImports,
-  parseChatGPTZip,
+  parseChatGPTZipAuto,
   saveArchive,
   type ImportRecord,
   type ParsedChatArchive,
@@ -75,7 +75,7 @@ export default function ChatImportPanel({ conversations, onImported, onRemoved }
       if (file.size > 250 * 1024 * 1024) {
         throw new Error("ZIP 文件超过 250MB。为避免浏览器内存不足，本版本暂不处理这么大的文件。");
       }
-      const archive = await parseChatGPTZip(file);
+      const archive = await parseChatGPTZipAuto(file);
       const duplicate = await findImportByHash(archive.fileHash);
       if (duplicate) {
         setNotice(`检测到重复文件：${duplicate.fileName}（导入于 ${new Date(duplicate.importedAt).toLocaleString()}）。本次未重复导入，原有批次仍保留。`);

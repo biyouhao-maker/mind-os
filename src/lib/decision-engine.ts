@@ -12,7 +12,7 @@
  * - 健康数据不参与决策参考。
  */
 import type { Conversation, Goal, Insight, LlmConfig } from "./types";
-import type { StoredChatMessage } from "./chat-archive";
+import type { StoredChatMessage } from "./chat-archive-parse";
 import { TOPIC_RULES } from "./profile-analyzer";
 import { chatCompletion, DECISION_SYSTEM_PROMPT, extractJson } from "./llm";
 
