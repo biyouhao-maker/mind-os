@@ -16,14 +16,13 @@
     "test:decision": "npm run compile:lib && node tests/run-decision-tests.mjs",
     "test:llm": "npm run compile:lib && node tests/run-llm-tests.mjs",
     "test:export": "npm run compile:lib && node tests/run-export-tests.mjs",
-    "test": "npm run test:parser && npm run test:analyzer && npm run test:growth && npm run test:decision && npm run test:llm && npm run test:export",
     "test": "npm run test:parser && npm run test:analyzer"
   },
   "dependencies": {
-    "next": "15.3.3",
+    "fflate": "^0.8.2",
+    "next": "^16.4.5",
     "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "fflate": "^0.8.2"
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
